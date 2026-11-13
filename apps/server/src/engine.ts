@@ -106,7 +106,6 @@ import {
   OpencodeBrain,
   platformCapJudge,
   createMeetingsToolSource,
-  createRoundtableClient,
   prepareAgentCode,
   queueBudgetEmail,
   type ResolveHost,
@@ -395,11 +394,6 @@ export function buildEngine(o: EngineOptions) {
   });
   // The workspace's cap of live background works (ADR 0121 §7).
   setWorkOrgCap(config.AGENT_WORK_MAX_PER_ORG);
-  // Roundtables run in the LoomRoom engine, a service of its own (ADR 0177): unset, the tools are not offered.
-  const roundtable =
-    config.MEETINGS_ENGINE_URL && config.MEETINGS_ENGINE_TOKEN
-      ? createRoundtableClient({ baseUrl: config.MEETINGS_ENGINE_URL, token: config.MEETINGS_ENGINE_TOKEN })
-      : null;
   const tools = createToolGateway({
     sources: [
       // A question for what the agent could find, or a secret asked in the chat, is held first (ADR 0109).
@@ -419,8 +413,8 @@ export function buildEngine(o: EngineOptions) {
         judge: context.judge,
       }),
       createFindAgentToolSource({ machines: machineHub }),
-      // A roundtable of experts on one topic (ADR 0177): the engine is a service, never imported.
-      createMeetingsToolSource({ engine: roundtable }),
+      // fork: meetings — a meeting of experts on one topic (ADR 0178): a row plus a director run, not a service.
+      createMeetingsToolSource(),
       createUsageToolSource(),
       // What people saved for the agent in the Vault, found before it asks them (ADR 0144).
       createVaultToolSource(vault),

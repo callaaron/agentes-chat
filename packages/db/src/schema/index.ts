@@ -14,7 +14,7 @@ export * from "./imports";
 export * from "./instance-secrets";
 export * from "./machines";
 export * from "./mail";
-export * from "./meetings";
+export * from "./meetings"; // fork: meetings
 export * from "./missions";
 export * from "./notifications";
 export * from "./operator";

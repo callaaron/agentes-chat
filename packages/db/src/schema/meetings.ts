@@ -1,9 +1,9 @@
-import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { users } from "./auth";
 import { channels } from "./chat";
 import { organizations } from "./tenancy";
 
-/** How a roundtable is going (ADR 0177). The engine keeps the transcript; this row keeps the delivery. */
+/** How a meeting is going (ADR 0178). */
 export const meetingStatusEnum = pgEnum("meeting_status", [
   "queued",
   "deliberating",
@@ -12,36 +12,40 @@ export const meetingStatusEnum = pgEnum("meeting_status", [
   "canceled",
 ]);
 
-/** One seat at the table: who speaks, as the engine knows them (a persona id from the engine roster). */
+/** Where a decision is in its life: proposed, agreed, being carried out, proven, or undone. */
+export const decisionStatusEnum = pgEnum("decision_status", [
+  "proposed",
+  "decided",
+  "executing",
+  "verified",
+  "reversed",
+]);
+
+/** One seat talking: still to speak, speaking now, spoken, or passed. */
+export const meetingTurnStatusEnum = pgEnum("meeting_turn_status", [
+  "pending",
+  "speaking",
+  "spoken",
+  "skipped",
+]);
+
 export interface MeetingSeat {
   name: string;
   role?: string;
-  personaId?: string;
-  /** The agent here that answers for this seat, when it is one of ours. */
+  /** The agent that answers for this seat here. */
   agentId?: string;
 }
 
-/** What the meeting decided, as the engine rendered it (never re-derived here). */
-export interface MeetingDecision {
-  decision: string;
-  conditions?: string;
-  dissent?: string;
-  qcPassed?: boolean;
-  qcScore?: number;
-}
-
-/** One thing to do after the meeting. doneWhen is the acceptance criterion, not a note. */
-export interface MeetingAction {
-  text: string;
-  owner?: string;
-  due?: string;
-  doneWhen?: string;
+export interface DecisionAcceptance {
+  /** What a person can check: "written quote below the old price". */
+  criteria: string[];
+  /** Where the proof lives once it exists (a file, a link, an issue). */
+  evidence?: string[];
 }
 
 /**
- * A roundtable (ADR 0177): the pointer this workspace keeps to a meeting run by the LoomRoom engine,
- * plus everything the channel needs to deliver it. One row per meeting, org-scoped like every
- * tenant-owned table.
+ * A meeting (ADR 0178): a channel that deliberates. It is a row plus a director run, not a service: the transcript is
+ * messages in the channel, and every turn is a run of the agent who holds the seat.
  */
 export const meetings = pgTable(
   "meetings",
@@ -55,27 +59,22 @@ export const meetings = pgTable(
     channelId: uuid()
       .notNull()
       .references(() => channels.id, { onDelete: "cascade" }),
-    /** Who asked for it; null when a routine did (the row stays, the person does not). */
     createdBy: text().references(() => users.id, { onDelete: "set null" }),
     topic: text().notNull(),
-    /** The engine mode: sequential | free | brainstorm | debate | host_summary. */
+    /** sequential | free | brainstorm | debate | host_summary */
     mode: text().notNull().default("debate"),
     seats: jsonb().$type<MeetingSeat[]>().notNull().default([]),
     status: meetingStatusEnum().notNull().default("queued"),
-    /** The engine id (mtg_...): the only key its API understands. */
-    engineMeetingId: text(),
+    /** The background run that takes turns (the director). */
+    directorRunId: uuid(),
     round: integer().notNull().default(0),
     maxRounds: integer(),
-    /** Why it stopped, in the engine words (converged, max_rounds, user_stop...). */
+    /** Why it stopped: converged, max_rounds, chair_stopped, failed. */
     stopReason: text(),
-    /** The rendered minutes (Markdown), written once, on convergence. */
+    /** The rendered minutes (Markdown), written when the chair accepts the convergence. */
     minutes: text(),
-    decisions: jsonb().$type<MeetingDecision[]>(),
-    actions: jsonb().$type<MeetingAction[]>(),
-    /** QC, dissent and citation counts: what lets a person trust the page without rereading it. */
+    /** QC, coverage, dissent counts: what lets a person trust the page. */
     provenance: jsonb().$type<Record<string, unknown>>(),
-    /** The Drive artifact the minutes were posted as. */
-    minutesArtifactId: uuid(),
     startedAt: timestamp({ withTimezone: true }),
     endedAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -84,6 +83,76 @@ export const meetings = pgTable(
   (t) => [
     index("meetings_org_created").on(t.orgId, t.createdAt),
     index("meetings_channel_created").on(t.channelId, t.createdAt),
-    index("meetings_engine").on(t.engineMeetingId),
+    index("meetings_status").on(t.orgId, t.status),
+  ],
+);
+
+/**
+ * The order of the meeting (ADR 0178): which seat speaks when, and the run that said it. The words themselves are
+ * messages in the channel (meta.meeting), so the transcript needs no second timeline.
+ */
+export const meetingTurns = pgTable(
+  "meeting_turns",
+  {
+    id: uuid()
+      .primaryKey()
+      .$defaultFn(() => Bun.randomUUIDv7()),
+    orgId: uuid()
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    meetingId: uuid()
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    seq: integer().notNull(),
+    round: integer().notNull().default(1),
+    seatIndex: integer().notNull(),
+    seatName: text().notNull(),
+    agentId: uuid(),
+    runId: uuid(),
+    messageId: uuid(),
+    status: meetingTurnStatusEnum().notNull().default("pending"),
+    startedAt: timestamp({ withTimezone: true }),
+    endedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("meeting_turns_meeting_seq").on(t.meetingId, t.seq),
+    index("meeting_turns_pending").on(t.meetingId, t.status),
+  ],
+);
+
+/**
+ * What the meeting decided (ADR 0178): a first-class object, not a paragraph in the minutes. Its acceptance is what a
+ * person checks before it counts, and what the payout model reads later.
+ */
+export const decisions = pgTable(
+  "decisions",
+  {
+    id: uuid()
+      .primaryKey()
+      .$defaultFn(() => Bun.randomUUIDv7()),
+    orgId: uuid()
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    meetingId: uuid()
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    text: text().notNull(),
+    conditions: text(),
+    /** The strongest case against it, kept with the decision on purpose. */
+    dissent: text(),
+    qcPassed: boolean(),
+    qcScore: integer(),
+    status: decisionStatusEnum().notNull().default("proposed"),
+    /** Who answers for it: a person, or an agent when one was named. */
+    ownerId: text(),
+    acceptance: jsonb().$type<DecisionAcceptance>(),
+    verifiedAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("decisions_org_created").on(t.orgId, t.createdAt),
+    index("decisions_meeting").on(t.meetingId),
+    index("decisions_status").on(t.orgId, t.status),
   ],
 );

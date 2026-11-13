@@ -159,6 +159,7 @@ export const BUILTIN_SCOPES: Record<string, { label: string; description: string
     description: "Suggest events. The person asking confirms before any invitation.",
   },
   "issues:write": { label: "Issues", description: "Create and update issues." },
+  // fork: meetings
   "meetings:read": {
     label: "Read roundtables",
     description: "List roundtables and read their minutes.",

@@ -1,12 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import { createMeeting, recordMinutes } from "../src/meetings";
+import { addDecision, createMeeting, listDecisions, verifyDecision } from "../src/meetings";
 import { createMeetingsToolSource, LIST_MEETINGS_TOOL, ROUNDTABLE_MINUTES_TOOL } from "../src/meetings-tools";
 import type { ToolContext } from "../src/tools/types";
 import { setup, type Fixture } from "./fixtures";
 
 /**
- * Roundtables (ADR 0177): the workspace keeps a row per meeting, the engine keeps the transcript. These exercise the
- * two read tools and the row helpers without a network.
+ * Meetings (ADR 0178): a row plus a director run. These exercise the read tools and the decision object without a
+ * network — the director's own decisions are pure and tested in director.test.ts.
  */
 
 let f: Fixture | undefined;
@@ -40,7 +40,7 @@ test("list_meetings is empty in a fresh workspace", async () => {
   f = await setup({ toolSources: [source] });
   const out = await (await tool(LIST_MEETINGS_TOOL)).execute({}, ctx());
   expect(out.isError).toBeFalsy();
-  expect(out.content).toContain("No roundtables");
+  expect(out.content).toContain("No meetings");
 });
 
 test("list_meetings shows what was created", async () => {
@@ -51,21 +51,51 @@ test("list_meetings shows what was created", async () => {
   expect(out.content).toContain("queued");
 });
 
-test("roundtable_minutes returns the decision and the acceptance criteria", async () => {
+test("a decision keeps its conditions, its dissent and its acceptance", async () => {
   f = await setup({ toolSources: [source] });
-  const row = await createMeeting(f.db, {
+  const meeting = await createMeeting(f.db, {
     orgId: f.org.id,
     channelId: f.general.id,
     createdBy: f.owner.id,
     topic: "Vendor renewal",
   });
-  await recordMinutes(f.db, f.org.id, row.id, {
-    markdown: "## Decision\nDo not renew at the current price.",
-    decisions: [{ decision: "Do not renew", conditions: "unless price drops 15%", dissent: "ops wants continuity", qcPassed: true }],
-    actions: [{ text: "Ask for a 15% cut", owner: "procurement", doneWhen: "written quote below the old price" }],
+  await addDecision(f.db, {
+    orgId: f.org.id,
+    meetingId: meeting.id,
+    text: "Do not renew at the current price",
+    conditions: "unless the quote drops 15%",
+    dissent: "ops wants continuity",
+    qcPassed: true,
+    qcScore: 84,
+    acceptance: { criteria: ["written quote below the old price"] },
   });
-  const out = await (await tool(ROUNDTABLE_MINUTES_TOOL)).execute({ meeting_id: row.id }, ctx());
+  const out = await (await tool(ROUNDTABLE_MINUTES_TOOL)).execute({ meeting_id: meeting.id }, ctx());
   expect(out.isError).toBeFalsy();
   expect(out.content).toContain("Do not renew at the current price");
-  expect(out.content).toContain("done when: written quote below the old price");
+  expect(out.content).toContain("unless the quote drops 15%");
+  expect(out.content).toContain("against: ops wants continuity");
+});
+
+test("a verified decision records the day it was checked", async () => {
+  f = await setup({ toolSources: [source] });
+  const meeting = await createMeeting(f.db, {
+    orgId: f.org.id,
+    channelId: f.general.id,
+    createdBy: f.owner.id,
+    topic: "Launch date",
+  });
+  const decision = await addDecision(f.db, { orgId: f.org.id, meetingId: meeting.id, text: "Ship on the 20th" });
+  await verifyDecision(f.db, f.org.id, decision.id);
+  const [row] = await listDecisions(f.db, f.org.id, meeting.id);
+  expect(row.status).toBe("verified");
+  expect(row.verifiedAt).not.toBeNull();
+});
+
+test("roundtable_minutes refuses an unknown id", async () => {
+  f = await setup({ toolSources: [source] });
+  const out = await (await tool(ROUNDTABLE_MINUTES_TOOL)).execute(
+    { meeting_id: "00000000-0000-7000-8000-000000000000" },
+    ctx(),
+  );
+  expect(out.isError).toBe(true);
 });

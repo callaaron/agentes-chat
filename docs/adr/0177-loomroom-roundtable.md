@@ -1,6 +1,6 @@
 # 0177. Roundtables: LoomRoom as the meeting engine
 
-- Status: Proposed
+- Status: Superseded by 0178 (a meeting is a run of this workspace, not a service)
 - Date: 2026-11-13
 - Scope: fork `callaaron/agentes-chat`, branch `feat/loomroom-roundtable`
 

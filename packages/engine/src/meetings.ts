@@ -1,100 +1,19 @@
-import { and, desc, eq, schema, type Database } from "@agenteschat/db";
-import type { MeetingAction, MeetingDecision, MeetingSeat } from "@agenteschat/db";
+import { and, asc, desc, eq, schema, type Database } from "@agenteschat/db";
+import type { DecisionAcceptance, MeetingSeat } from "@agenteschat/db";
 
-/** What a person asks a roundtable for (ADR 0177): the topic, who sits, what they bring. */
-export interface ConveneInput {
+/** What a person asks a meeting for (ADR 0178). */
+export interface CreateMeetingInput {
   orgId: string;
   channelId: string;
   createdBy: string | null;
   topic: string;
   mode?: string;
   seats?: MeetingSeat[];
-  materials?: { kind: string; title?: string; body: string }[];
-}
-
-/** Where a meeting stands, as the engine tells it. */
-export interface MeetingProgress {
-  status: string;
-  round?: number;
   maxRounds?: number;
-  stopReason?: string;
 }
 
-/** The minutes as the engine renders them: Markdown for people, structure for the channel. */
-export interface MeetingMinutes {
-  markdown: string;
-  decisions?: MeetingDecision[];
-  actions?: MeetingAction[];
-  provenance?: Record<string, unknown>;
-}
-
-/**
- * The LoomRoom engine's HTTP contract (ADR 0177): convene, ask how it is going, take the minutes. The engine owns
- * the transcript and the deliberation; this workspace only points at it. Every call carries the service token.
- */
-export interface RoundtableEngine {
-  convene(input: {
-    topic: string;
-    mode?: string;
-    seats?: MeetingSeat[];
-    materials?: ConveneInput["materials"];
-    idempotencyKey?: string;
-  }): Promise<{ meetingId: string; status?: string; url?: string }>;
-  status(meetingId: string): Promise<MeetingProgress>;
-  minutes(meetingId: string): Promise<MeetingMinutes>;
-}
-
-const ENGINE_TIMEOUTS = { convene: 10_000, status: 5_000, minutes: 30_000 } as const;
-
-/** A client for the sidecar engine. Nothing is imported from it: it is a service, not a library (ADR 0177). */
-export function createRoundtableClient(options: {
-  baseUrl: string;
-  token: string;
-  fetchImpl?: typeof fetch;
-  timeoutMs?: Partial<typeof ENGINE_TIMEOUTS>;
-}): RoundtableEngine {
-  const base = options.baseUrl.replace(/\/+$/, "");
-  const doFetch = options.fetchImpl ?? fetch;
-  const timeout = { ...ENGINE_TIMEOUTS, ...(options.timeoutMs ?? {}) };
-
-  async function call<T>(path: string, init: RequestInit, ms: number): Promise<T> {
-    const response = await doFetch(base + path, {
-      ...init,
-      headers: {
-        authorization: "Bearer " + options.token,
-        "content-type": "application/json",
-        ...(init.headers ?? {}),
-      },
-      signal: AbortSignal.timeout(ms),
-    });
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error("roundtable engine " + response.status + ": " + body.slice(0, 300));
-    }
-    return (await response.json()) as T;
-  }
-
-  return {
-    convene: (input) =>
-      call("/api/meetings", {
-        method: "POST",
-        body: JSON.stringify({
-          topic: input.topic,
-          mode: input.mode,
-          seats: input.seats ?? [],
-          materials: input.materials ?? [],
-        }),
-        headers: input.idempotencyKey ? { "idempotency-key": input.idempotencyKey } : undefined,
-      }, timeout.convene),
-    status: (meetingId) =>
-      call("/api/meetings/" + encodeURIComponent(meetingId), { method: "GET" }, timeout.status),
-    minutes: (meetingId) =>
-      call("/api/meetings/" + encodeURIComponent(meetingId) + "/minutes", { method: "GET" }, timeout.minutes),
-  };
-}
-
-/** The row this workspace keeps for a meeting, before the engine has one. */
-export async function createMeeting(db: Database, input: ConveneInput) {
+/** The row this workspace keeps for a meeting. The words are messages in the channel; this is the meeting itself. */
+export async function createMeeting(db: Database, input: CreateMeetingInput) {
   const [row] = await db
     .insert(schema.meetings)
     .values({
@@ -104,12 +23,12 @@ export async function createMeeting(db: Database, input: ConveneInput) {
       topic: input.topic,
       mode: input.mode ?? "debate",
       seats: input.seats ?? [],
+      maxRounds: input.maxRounds ?? 6,
     })
     .returning();
   return row;
 }
 
-/** Newest first, this workspace only. */
 export async function listMeetings(db: Database, orgId: string, limit = 20) {
   const capped = Math.min(Math.max(limit, 1), 50);
   return db
@@ -129,40 +48,144 @@ export async function getMeeting(db: Database, orgId: string, meetingId: string)
   return row ?? null;
 }
 
-/** Engine progress back into the row: status, round, stop reason and the engine id once it has one. */
-export async function recordProgress(
+/** The meeting's turns in order: the agenda as it actually happened. */
+export async function listTurns(db: Database, orgId: string, meetingId: string) {
+  return db
+    .select()
+    .from(schema.meetingTurns)
+    .where(and(eq(schema.meetingTurns.orgId, orgId), eq(schema.meetingTurns.meetingId, meetingId)))
+    .orderBy(asc(schema.meetingTurns.seq));
+}
+
+/** Writes the round's plan as pending turns; idempotent per (meeting, seq). */
+export async function addTurn(
+  db: Database,
+  input: {
+    orgId: string;
+    meetingId: string;
+    seq: number;
+    round: number;
+    seatIndex: number;
+    seatName: string;
+    agentId?: string | null;
+  },
+) {
+  const [row] = await db
+    .insert(schema.meetingTurns)
+    .values({
+      orgId: input.orgId,
+      meetingId: input.meetingId,
+      seq: input.seq,
+      round: input.round,
+      seatIndex: input.seatIndex,
+      seatName: input.seatName,
+      agentId: input.agentId ?? null,
+    })
+    .onConflictDoNothing({ target: [schema.meetingTurns.meetingId, schema.meetingTurns.seq] })
+    .returning();
+  return row ?? null;
+}
+
+/** A turn is speaking: the run that holds it. */
+export async function startTurn(db: Database, orgId: string, turnId: string, runId: string) {
+  await db
+    .update(schema.meetingTurns)
+    .set({ status: "speaking", runId, startedAt: new Date() })
+    .where(and(eq(schema.meetingTurns.orgId, orgId), eq(schema.meetingTurns.id, turnId)));
+}
+
+/** A turn was said: the message holds the words. */
+export async function finishTurn(db: Database, orgId: string, turnId: string, messageId: string) {
+  await db
+    .update(schema.meetingTurns)
+    .set({ status: "spoken", messageId, endedAt: new Date() })
+    .where(and(eq(schema.meetingTurns.orgId, orgId), eq(schema.meetingTurns.id, turnId)));
+}
+
+export async function skipTurn(db: Database, orgId: string, turnId: string) {
+  await db
+    .update(schema.meetingTurns)
+    .set({ status: "skipped", endedAt: new Date() })
+    .where(and(eq(schema.meetingTurns.orgId, orgId), eq(schema.meetingTurns.id, turnId)));
+}
+
+/** Status, round and how it ended. The chair's acceptance is what writes the minutes. */
+export async function setMeetingStatus(
   db: Database,
   orgId: string,
   meetingId: string,
-  progress: MeetingProgress & { engineMeetingId?: string },
+  patch: {
+    status?: "queued" | "deliberating" | "converged" | "failed" | "canceled";
+    round?: number;
+    maxRounds?: number;
+    stopReason?: string | null;
+    minutes?: string;
+    provenance?: Record<string, unknown>;
+    directorRunId?: string;
+  },
 ) {
   await db
     .update(schema.meetings)
     .set({
-      status: progress.status as typeof schema.meetings.$inferSelect.status,
-      round: progress.round ?? 0,
-      maxRounds: progress.maxRounds ?? null,
-      stopReason: progress.stopReason ?? null,
-      engineMeetingId: progress.engineMeetingId ?? undefined,
+      ...(patch.status ? { status: patch.status } : {}),
+      ...(patch.round !== undefined ? { round: patch.round } : {}),
+      ...(patch.maxRounds !== undefined ? { maxRounds: patch.maxRounds } : {}),
+      ...(patch.stopReason !== undefined ? { stopReason: patch.stopReason } : {}),
+      ...(patch.minutes !== undefined ? { minutes: patch.minutes } : {}),
+      ...(patch.provenance !== undefined ? { provenance: patch.provenance } : {}),
+      ...(patch.directorRunId !== undefined ? { directorRunId: patch.directorRunId } : {}),
+      ...(patch.status === "deliberating" ? { startedAt: new Date() } : {}),
+      ...(patch.status === "converged" || patch.status === "failed" ? { endedAt: new Date() } : {}),
       updatedAt: new Date(),
-      ...(progress.status === "deliberating" ? { startedAt: new Date() } : {}),
-      ...(progress.status === "converged" || progress.status === "failed" ? { endedAt: new Date() } : {}),
     })
     .where(and(eq(schema.meetings.orgId, orgId), eq(schema.meetings.id, meetingId)));
 }
 
-/** On convergence: the minutes and everything a person needs to trust them. */
-export async function recordMinutes(db: Database, orgId: string, meetingId: string, minutes: MeetingMinutes) {
-  await db
-    .update(schema.meetings)
-    .set({
-      minutes: minutes.markdown,
-      decisions: minutes.decisions ?? [],
-      actions: minutes.actions ?? [],
-      provenance: minutes.provenance ?? {},
-      status: "converged",
-      endedAt: new Date(),
-      updatedAt: new Date(),
+/** A decision the meeting reached: first-class, with what would prove it. */
+export async function addDecision(
+  db: Database,
+  input: {
+    orgId: string;
+    meetingId: string;
+    text: string;
+    conditions?: string | null;
+    dissent?: string | null;
+    qcPassed?: boolean | null;
+    qcScore?: number | null;
+    ownerId?: string | null;
+    acceptance?: DecisionAcceptance | null;
+  },
+) {
+  const [row] = await db
+    .insert(schema.decisions)
+    .values({
+      orgId: input.orgId,
+      meetingId: input.meetingId,
+      text: input.text,
+      conditions: input.conditions ?? null,
+      dissent: input.dissent ?? null,
+      qcPassed: input.qcPassed ?? null,
+      qcScore: input.qcScore ?? null,
+      ownerId: input.ownerId ?? null,
+      acceptance: input.acceptance ?? null,
+      status: "decided",
     })
-    .where(and(eq(schema.meetings.orgId, orgId), eq(schema.meetings.id, meetingId)));
+    .returning();
+  return row;
+}
+
+export async function listDecisions(db: Database, orgId: string, meetingId: string) {
+  return db
+    .select()
+    .from(schema.decisions)
+    .where(and(eq(schema.decisions.orgId, orgId), eq(schema.decisions.meetingId, meetingId)))
+    .orderBy(asc(schema.decisions.createdAt));
+}
+
+/** A person checked the acceptance: it counts as done, with the day it was checked. */
+export async function verifyDecision(db: Database, orgId: string, decisionId: string) {
+  await db
+    .update(schema.decisions)
+    .set({ status: "verified", verifiedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(schema.decisions.orgId, orgId), eq(schema.decisions.id, decisionId)));
 }

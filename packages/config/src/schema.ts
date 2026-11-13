@@ -71,18 +71,6 @@ export const envVars = {
     section: "Server",
     example: "https://chat.example.com",
   },
-  MEETINGS_ENGINE_URL: {
-    schema: z.url().optional(),
-    description:
-      "Base URL of the LoomRoom roundtable engine (ADR 0177), reachable only from this server. Unset: roundtables are off and their tools are not offered.",
-    section: "Server",
-    example: "http://127.0.0.1:4319",
-  },
-  MEETINGS_ENGINE_TOKEN: {
-    schema: z.string().min(8).optional(),
-    description: "Service token sent to the roundtable engine as a bearer. Set together with MEETINGS_ENGINE_URL.",
-    section: "Server",
-  },
   LANDING_URL: {
     schema: z.url().optional(),
     description:

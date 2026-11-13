@@ -45,6 +45,7 @@ export const BUILTIN_TOOLS: Record<string, string[]> = {
   "drive:write": ["create_artifact", "update_artifact"],
   "issues:read": ["list_issues"],
   "issues:write": ["create_issue", "update_issue", "comment_issue"],
+  // fork: meetings
   "meetings:read": ["list_meetings", "roundtable_minutes"],
   "meetings:write": ["convene_roundtable"],
   "calendar:read": ["list_events", "find_free_time"],
