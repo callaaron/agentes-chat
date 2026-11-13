@@ -16187,6 +16187,7 @@ export const ptBR = {
     },
   },
   builtinTools: {
+    // fork: meetings
     list_meetings: { label: "Listar reuniões", description: "Lista as reuniões deste espaço, mais recentes primeiro." },
     roundtable_minutes: { label: "Ata da reunião", description: "Lê as decisões, a discordância e o que provaria cada uma." },
     convene_roundtable: { label: "Convocar reunião", description: "Começa uma reunião de especialistas sobre um tema; a decisão cai no canal." },

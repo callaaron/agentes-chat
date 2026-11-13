@@ -184,6 +184,7 @@ export * from "./mail/watches";
 export * from "./management";
 export * from "./media";
 export * from "./media-tools";
+export * from "./meeting-run"; // fork: meetings
 export * from "./meetings"; // fork: meetings
 export * from "./meetings-tools"; // fork: meetings
 export * from "./member-status";

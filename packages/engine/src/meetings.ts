@@ -88,10 +88,10 @@ export async function addTurn(
 }
 
 /** A turn is speaking: the run that holds it. */
-export async function startTurn(db: Database, orgId: string, turnId: string, runId: string) {
+export async function startTurn(db: Database, orgId: string, turnId: string, runId?: string | null) {
   await db
     .update(schema.meetingTurns)
-    .set({ status: "speaking", runId, startedAt: new Date() })
+    .set({ status: "speaking", ...(runId ? { runId } : {}), startedAt: new Date() })
     .where(and(eq(schema.meetingTurns.orgId, orgId), eq(schema.meetingTurns.id, turnId)));
 }
 
