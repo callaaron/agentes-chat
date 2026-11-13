@@ -1,5 +1,5 @@
 import type { ToolDefinition, ToolSource } from "./tools/types";
-import { createMeeting, getMeeting, listDecisions, listMeetings } from "./meetings";
+import { createMeeting, getMeeting, listMeetings, listMeetingDecisions } from "./meetings";
 import { personBehindCall } from "./requester";
 
 export const MEETINGS_READ_SCOPE = "meetings:read";
@@ -64,7 +64,7 @@ export function createMeetingsToolSource(): ToolSource {
       const id = typeof input.meeting_id === "string" ? input.meeting_id : "";
       const row = id ? await getMeeting(ctx.db, ctx.orgId, id) : null;
       if (!row) return { content: "No such meeting in this workspace.", isError: true };
-      const decisions = await listDecisions(ctx.db, ctx.orgId, row.id);
+      const decisions = await listMeetingDecisions(ctx.db, ctx.orgId, row.id);
       if (!row.minutes && !decisions.length) {
         return { content: "This meeting has not converged yet: status " + row.status + "." };
       }

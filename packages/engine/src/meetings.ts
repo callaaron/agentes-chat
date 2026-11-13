@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, schema, type Database } from "@agenteschat/db";
-import type { DecisionAcceptance, MeetingSeat } from "@agenteschat/db";
+import type { DecisionAcceptance, MeetingSeat } from "./meeting-types";
 
 /** What a person asks a meeting for (ADR 0178). */
 export interface CreateMeetingInput {
@@ -26,6 +26,7 @@ export async function createMeeting(db: Database, input: CreateMeetingInput) {
       maxRounds: input.maxRounds ?? 6,
     })
     .returning();
+  if (!row) throw new Error("meeting insert returned no row");
   return row;
 }
 
@@ -171,10 +172,11 @@ export async function addDecision(
       status: "decided",
     })
     .returning();
+  if (!row) throw new Error("decision insert returned no row");
   return row;
 }
 
-export async function listDecisions(db: Database, orgId: string, meetingId: string) {
+export async function listMeetingDecisions(db: Database, orgId: string, meetingId: string) {
   return db
     .select()
     .from(schema.decisions)

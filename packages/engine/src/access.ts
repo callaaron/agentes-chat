@@ -138,6 +138,16 @@ export interface AccessTool {
  */
 export const BUILTIN_TOOL_INFO: Record<string, { label: string; description: string }> = {
   ask_user: { label: "Ask the person", description: "Asks a short question and waits for the answer." },
+  // fork: meetings
+  list_meetings: { label: "List meetings", description: "Lists this workspace's meetings, newest first." },
+  roundtable_minutes: {
+    label: "Meeting minutes",
+    description: "Reads a meeting's decisions, dissent and what would prove them done.",
+  },
+  convene_roundtable: {
+    label: "Convene a meeting",
+    description: "Starts a meeting of experts on a topic; the decision lands in the channel.",
+  },
   react: { label: "React", description: "Reacts with an emoji instead of replying to a simple thanks or ok." },
   search_context: { label: "Search context", description: "Searches messages, summaries, facts and lessons." },
   get_summary: { label: "Read summary", description: "Reads the summary of a thread or period." },

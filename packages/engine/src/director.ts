@@ -1,4 +1,4 @@
-import type { MeetingSeat } from "@agenteschat/db";
+import type { MeetingSeat } from "./meeting-types";
 
 /**
  * The director (ADR 0178): the three decisions a meeting makes about itself, kept pure so they can be tested without a
@@ -95,7 +95,7 @@ const CONDITION = /(前提|条件|除非|只要|如果|仅当|unless|provided|on
 export function extractDecision(speeches: Speech[]): ExtractedDecision | null {
   const spoken = speeches.filter((s) => s.text.trim().length > 0);
   if (!spoken.length) return null;
-  const chair = spoken[spoken.length - 1];
+  const chair = spoken[spoken.length - 1]!;
   const decision = chair.text.trim();
   if (decision.length < 8) return null;
 

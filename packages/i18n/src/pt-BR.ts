@@ -16187,18 +16187,9 @@ export const ptBR = {
     },
   },
   builtinTools: {
-    list_meetings: {
-      label: "Listar mesas-redondas",
-      description: "Lista as mesas-redondas deste espaço, mais recentes primeiro.",
-    },
-    roundtable_minutes: {
-      label: "Ata da mesa-redonda",
-      description: "Lê a decisão, a discordância e as ações de uma mesa-redonda.",
-    },
-    convene_roundtable: {
-      label: "Convocar mesa-redonda",
-      description: "Começa uma mesa-redonda de especialistas sobre um tema; a ata cai no canal.",
-    },
+    list_meetings: { label: "Listar reuniões", description: "Lista as reuniões deste espaço, mais recentes primeiro." },
+    roundtable_minutes: { label: "Ata da reunião", description: "Lê as decisões, a discordância e o que provaria cada uma." },
+    convene_roundtable: { label: "Convocar reunião", description: "Começa uma reunião de especialistas sobre um tema; a decisão cai no canal." },
     ask_user: {
       label: "Perguntar à pessoa",
       description: "Faz uma pergunta curta e espera a resposta.",

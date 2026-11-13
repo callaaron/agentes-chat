@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { addDecision, createMeeting, listDecisions, verifyDecision } from "../src/meetings";
+import { addDecision, createMeeting, listMeetingDecisions, verifyDecision } from "../src/meetings";
 import { createMeetingsToolSource, LIST_MEETINGS_TOOL, ROUNDTABLE_MINUTES_TOOL } from "../src/meetings-tools";
 import type { ToolContext } from "../src/tools/types";
 import { setup, type Fixture } from "./fixtures";
@@ -19,7 +19,7 @@ afterEach(async () => {
 const source = createMeetingsToolSource();
 
 async function tool(name: string) {
-  const found = (await source.tools()).find((t) => t.name === name);
+  const found = (await source.tools(ctx())).find((t) => t.name === name);
   if (!found) throw new Error("missing tool " + name);
   return found;
 }
@@ -53,12 +53,12 @@ test("list_meetings shows what was created", async () => {
 
 test("a decision keeps its conditions, its dissent and its acceptance", async () => {
   f = await setup({ toolSources: [source] });
-  const meeting = await createMeeting(f.db, {
+  const meeting = (await createMeeting(f.db, {
     orgId: f.org.id,
     channelId: f.general.id,
     createdBy: f.owner.id,
     topic: "Vendor renewal",
-  });
+  }))!;
   await addDecision(f.db, {
     orgId: f.org.id,
     meetingId: meeting.id,
@@ -78,15 +78,15 @@ test("a decision keeps its conditions, its dissent and its acceptance", async ()
 
 test("a verified decision records the day it was checked", async () => {
   f = await setup({ toolSources: [source] });
-  const meeting = await createMeeting(f.db, {
+  const meeting = (await createMeeting(f.db, {
     orgId: f.org.id,
     channelId: f.general.id,
     createdBy: f.owner.id,
     topic: "Launch date",
-  });
-  const decision = await addDecision(f.db, { orgId: f.org.id, meetingId: meeting.id, text: "Ship on the 20th" });
+  }))!;
+  const decision = (await addDecision(f.db, { orgId: f.org.id, meetingId: meeting.id, text: "Ship on the 20th" }))!;
   await verifyDecision(f.db, f.org.id, decision.id);
-  const [row] = await listDecisions(f.db, f.org.id, meeting.id);
+  const row = (await listMeetingDecisions(f.db, f.org.id, meeting.id))[0]!;
   expect(row.status).toBe("verified");
   expect(row.verifiedAt).not.toBeNull();
 });

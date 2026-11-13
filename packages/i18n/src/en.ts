@@ -16191,18 +16191,9 @@ export const en = {
     },
   },
   builtinTools: {
-    list_meetings: {
-      label: "List roundtables",
-      description: "Lists this workspace's roundtables, newest first.",
-    },
-    roundtable_minutes: {
-      label: "Roundtable minutes",
-      description: "Reads a roundtable's decision, dissent and action items.",
-    },
-    convene_roundtable: {
-      label: "Convene a roundtable",
-      description: "Starts a roundtable of experts on a topic; the minutes land in the channel.",
-    },
+    list_meetings: { label: "List meetings", description: "Lists this workspace's meetings, newest first." },
+    roundtable_minutes: { label: "Meeting minutes", description: "Reads a meeting's decisions, dissent and what would prove them done." },
+    convene_roundtable: { label: "Convene a meeting", description: "Starts a meeting of experts on a topic; the decision lands in the channel." },
     ask_user: {
       label: "Ask the person",
       description: "Asks a short question and waits for the answer.",
