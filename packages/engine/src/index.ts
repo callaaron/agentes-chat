@@ -184,6 +184,8 @@ export * from "./mail/watches";
 export * from "./management";
 export * from "./media";
 export * from "./media-tools";
+export * from "./meetings";
+export * from "./meetings-tools";
 export * from "./member-status";
 export * from "./message-links";
 export * from "./message-memories";

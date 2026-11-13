@@ -45,6 +45,8 @@ export const BUILTIN_TOOLS: Record<string, string[]> = {
   "drive:write": ["create_artifact", "update_artifact"],
   "issues:read": ["list_issues"],
   "issues:write": ["create_issue", "update_issue", "comment_issue"],
+  "meetings:read": ["list_meetings", "roundtable_minutes"],
+  "meetings:write": ["convene_roundtable"],
   "calendar:read": ["list_events", "find_free_time"],
   "calendar:write": ["propose_event"],
   "skills:read": ["load_skill", "read_skill_file", "update_skill", "offer_install_skill", "update_skill_from_source"],

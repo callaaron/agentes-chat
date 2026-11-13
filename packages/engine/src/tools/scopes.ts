@@ -159,6 +159,14 @@ export const BUILTIN_SCOPES: Record<string, { label: string; description: string
     description: "Suggest events. The person asking confirms before any invitation.",
   },
   "issues:write": { label: "Issues", description: "Create and update issues." },
+  "meetings:read": {
+    label: "Read roundtables",
+    description: "List roundtables and read their minutes.",
+  },
+  "meetings:write": {
+    label: "Convene roundtables",
+    description: "Start a roundtable of experts on a topic. It costs model calls and waits for a person.",
+  },
   "skills:read": { label: "Use skills", description: "Load the skills enabled for the agent." },
   "wiki:read": { label: "Read the wiki", description: "Search and read the organization's wiki pages." },
   "wiki:write": {
